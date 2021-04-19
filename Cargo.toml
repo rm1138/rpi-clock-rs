@@ -1,0 +1,17 @@
+[package]
+name = "rpi-awtrix"
+version = "0.1.0"
+authors = ["Ricky Lam <rm1138@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rppal = { git = "https://github.com/golemparts/rppal.git" }
+bitvec = "0.20"
+chrono = "0.4"
+paho-mqtt = "0.9"
+openssl = { version = '0.10', optional = true, features = ["vendored"] }
+
+[features]
+vendored-openssl = ["openssl/vendored"]
