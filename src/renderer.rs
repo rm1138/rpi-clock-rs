@@ -1,9 +1,11 @@
+use crate::bitmap::Bitmap;
 use bitvec::prelude::*;
 
 const ROWS: usize = 8;
 const COLS: usize = 32;
 
-enum Color {
+#[derive(Clone)]
+pub enum Color {
     White,
     Black,
     Raw(u8, u8, u8),
@@ -12,33 +14,15 @@ enum Color {
 impl Color {
     fn to_rgb(&self) -> (u8, u8, u8) {
         match self {
-            Color::White => (255, 255, 255),
-            Color::Black => (20, 0, 0),
-            Color::Raw(r, g, b) => (*r, *g, *b)
+            Color::White => (12, 12, 12),
+            Color::Black => (0, 0, 0),
+            Color::Raw(r, g, b) => (*r, *g, *b),
         }
     }
 }
 
-struct Bitmap {
-    bits: Vec<[bool; 8]>
-}
-
-impl Bitmap {
-    fn from_char(char: char) -> Bitmap {
-        let bits: Vec<[bool; 8]> = match char {
-            '1' => {
-                vec![]
-            }
-            _ => {
-                vec![]
-            }
-        };
-        Bitmap { bits }
-    }
-}
-
 struct Pixel {
-    color: Color
+    color: Color,
 }
 
 impl Pixel {
@@ -46,46 +30,72 @@ impl Pixel {
         let (r, g, b) = self.color.to_rgb();
         [g, r, b]
     }
+
+    fn set_color(&mut self, color: &Color) {
+        self.color = color.clone();
+    }
 }
 
 impl Default for Pixel {
     fn default() -> Pixel {
         Pixel {
-            color: Color::Black
+            color: Color::Black,
         }
     }
 }
 
 pub struct Frame {
-    pixels: [[Pixel; 8]; 32]
+    pixels: [[Pixel; 8]; 32],
 }
 
 impl Frame {
     pub fn new() -> Frame {
         let pixels: [[Pixel; 8]; 32] = Default::default();
-        Frame {
-            pixels
+        Frame { pixels }
+    }
+
+    pub fn clear(&mut self) {
+        for col in self.pixels.iter_mut() {
+            for pixel in col {
+                pixel.set_color(&Color::Black);
+            }
         }
     }
 
-    fn draw_bitmap(&mut self, bitmap: &Box<Bitmap>, color: &Color, x: i32, y: i32) {}
+    fn draw_bitmap(&mut self, bitmap: &Bitmap, color: &Color, x: usize, y: usize) {
+        for (col_idx, col) in bitmap.bits.iter().enumerate() {
+            for (row_idx, bit) in col.iter().enumerate() {
+                if *bit != 0 && col_idx + x < COLS && row_idx + y < ROWS {
+                    self.pixels[col_idx + x][row_idx + y].set_color(color)
+                }
+            }
+        }
+    }
 
-    pub fn draw_text(&mut self, text: &str, color: &Color, x: i32, y: i32) {}
+    pub fn draw_text(&mut self, text: &str, color: &Color, x: usize, y: usize) {
+        let mut x_offset = x;
+        for char in text.chars() {
+            let bitmap = Bitmap::from_char(char);
+            self.draw_bitmap(&bitmap, color, x_offset, y);
+            x_offset += bitmap.bits.len() + 1;
+        }
+    }
 
     fn to_bytes(&self) -> [u8; 3 * ROWS * COLS] {
         let mut result = [0u8; 3 * ROWS * COLS];
         let mut idx = 0;
         for (col_idx, col) in self.pixels.iter().enumerate() {
-            let iter = if col_idx % 2 == 1 {
-                col.iter()
-            } else {
-                col.iter()
-            };
-            for pixel in iter {
+            let apply = |pixel: &Pixel| {
                 for channel in pixel.to_bytes().iter() {
                     result[idx] = *channel;
                     idx += 1;
                 }
+            };
+
+            if col_idx % 2 == 1 {
+                col.iter().rev().for_each(apply);
+            } else {
+                col.iter().for_each(apply);
             }
         }
         result
@@ -96,7 +106,6 @@ impl Frame {
         let bytes = self.to_bytes();
         let bits = bytes.view_bits::<Msb0>();
 
-        let mut idx = 0;
         for bit in bits.iter() {
             if *bit {
                 result.push(0b1111_1111);
@@ -105,8 +114,7 @@ impl Frame {
                 result.push(0b1111_1000);
                 result.push(0b0000_0000);
             }
-            idx += 8;
-        };
+        }
 
         for _ in 1..1000 {
             result.push(0)
