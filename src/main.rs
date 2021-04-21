@@ -106,8 +106,6 @@ fn main() {
     let adps_reading = sensor::apds_9960::ApdsSensor::init("/dev/i2c-1".to_string());
     let state = Arc::new(RwLock::new(RenderState::init()));
     let state_read = state.clone();
-    let mut spi = Spi::new(Bus::Spi0, SlaveSelect::Ss0, 15_600_000, Mode::Mode0).unwrap();
-    let mut frame = Frame::new();
 
     std::thread::spawn(move || loop {
         if let Ok(mut state) = state.write() {
@@ -119,6 +117,10 @@ fn main() {
         std::thread::sleep(Duration::from_millis(1000));
     });
 
+    std::thread::sleep(Duration::from_secs(1));
+
+    let mut spi = Spi::new(Bus::Spi0, SlaveSelect::Ss0, 15_600_000, Mode::Mode0).unwrap();
+    let mut frame = Frame::new();
     loop {
         frame.clear();
         if let Ok(state) = state_read.read() {

@@ -109,15 +109,15 @@ impl Frame {
         for bit in bits.iter() {
             if *bit {
                 result.push(0b1111_1111);
-                result.push(0b1000_0000);
+                result.push(0b1111_0000);
             } else {
-                result.push(0b1111_1000);
+                result.push(0b1111_0000);
                 result.push(0b0000_0000);
             }
         }
 
         for _ in 1..1000 {
-            result.push(0)
+            result.push(0b0000_0000);
         }
         result
     }
