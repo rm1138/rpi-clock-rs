@@ -16,35 +16,28 @@ pub struct ApdsReading {
     gesture: Option<Gesture>,
 }
 
+impl ApdsReading {
+    pub fn get_light(&self) -> f32 {
+        self.light as f32
+    }
+}
+
 pub struct ApdsSensor {}
 
 fn init_and_calibrate(apds: &mut Apds9960<I2cdev>) {
     apds.enable().unwrap();
     apds.enable_light().unwrap();
-    // apds.enable_gesture().unwrap();
-    // apds.enable_gesture_mode().unwrap();
-    //
-    // apds.enable_gesture_mode().unwrap();
-    // let mut gesture_data = [0; 4];
-    // block!(apds.read_gesture_data(&mut gesture_data)).unwrap();
-    // apds.disable_gesture_mode().unwrap();
-    //
-    // apds.set_gesture_up_offset(gesture_data[0] as i8).unwrap();
-    // apds.set_gesture_down_offset(gesture_data[1] as i8).unwrap();
-    // apds.set_gesture_left_offset(gesture_data[2] as i8).unwrap();
-    // apds.set_gesture_right_offset(gesture_data[3] as i8).unwrap();
+    apds.set_light_integration_time(128).unwrap();
 }
 
 impl Sensor<ApdsReading> for ApdsSensor {
     fn init(bus: String) -> Arc<RwLock<Option<ApdsReading>>> {
         let bus = I2cdev::new(bus).unwrap();
         let mut apds = Apds9960::new(bus);
-
-        init_and_calibrate(&mut apds);
-        // apds.enable_wait().unwrap();
-
         let reading = Arc::new(RwLock::new(None));
         let reading_clone = reading.clone();
+
+        init_and_calibrate(&mut apds);
 
         std::thread::spawn(move || loop {
             let light = block!(apds.read_light()).unwrap();

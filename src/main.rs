@@ -1,21 +1,21 @@
 use crate::renderer::{Color, Frame};
 use crate::sensor::bme_280::BmeReading;
 use crate::sensor::Sensor;
-use crate::util::spin_wait;
 use chrono::Local;
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
+use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 mod bitmap;
 mod renderer;
 mod sensor;
-mod util;
 
 struct RenderState {
     state: State,
     remain_tick: usize,
     bme_reading: Option<BmeReading>,
+    brightness: f32,
 }
 
 enum State {
@@ -33,6 +33,7 @@ impl RenderState {
             state: State::Empty,
             remain_tick: 0,
             bme_reading: None,
+            brightness: 0.1f32,
         }
     }
 
@@ -72,6 +73,10 @@ impl RenderState {
         self.bme_reading = bme_reading;
     }
 
+    fn set_brightness(&mut self, brightness: f32) {
+        self.brightness = brightness;
+    }
+
     fn get_state(&self) -> &State {
         &self.state
     }
@@ -102,9 +107,9 @@ impl RenderState {
 
 fn main() {
     println!("Started");
+    let state = Arc::new(RwLock::new(RenderState::init()));
     let bme_reading = sensor::bme_280::BmeSensor::init("/dev/i2c-1".to_string());
     let adps_reading = sensor::apds_9960::ApdsSensor::init("/dev/i2c-1".to_string());
-    let state = Arc::new(RwLock::new(RenderState::init()));
     let state_read = state.clone();
 
     std::thread::spawn(move || loop {
@@ -113,8 +118,13 @@ fn main() {
             if let Ok(bme_reading) = bme_reading.read() {
                 (*state).set_bme_reading(*bme_reading);
             }
+            if let Ok(reading) = adps_reading.read() {
+                if let Some(reading) = reading.deref() {
+                    (*state).set_brightness(reading.get_light() / 50f32)
+                }
+            }
         }
-        std::thread::sleep(Duration::from_millis(1000));
+        std::thread::sleep(Duration::from_secs(1));
     });
 
     std::thread::sleep(Duration::from_secs(1));
@@ -124,18 +134,19 @@ fn main() {
     loop {
         frame.clear();
         if let Ok(state) = state_read.read() {
+            frame.set_brightness(state.brightness);
             match state.get_state() {
-                State::Clock => frame.draw_text(&state.get_render_text(), &Color::White, 2, 1),
-                State::Date => frame.draw_text(&state.get_render_text(), &Color::White, 1, 1),
+                State::Clock => frame.draw_text(&state.get_render_text(), &Color::Rainbow, 2, 1),
+                State::Date => frame.draw_text(&state.get_render_text(), &Color::Rainbow, 1, 1),
                 State::Temperature => {
-                    frame.draw_text(&state.get_render_text(), &Color::White, 6, 1)
+                    frame.draw_text(&state.get_render_text(), &Color::Rainbow, 6, 1)
                 }
-                State::Humidity => frame.draw_text(&state.get_render_text(), &Color::White, 6, 1),
-                State::Pressure => frame.draw_text(&state.get_render_text(), &Color::White, 1, 1),
+                State::Humidity => frame.draw_text(&state.get_render_text(), &Color::Rainbow, 6, 1),
+                State::Pressure => frame.draw_text(&state.get_render_text(), &Color::Rainbow, 1, 1),
                 _ => {}
             }
         }
         spi.write(&frame.get_spi_data()).unwrap();
-        spin_wait(2);
+        std::thread::sleep(Duration::from_micros(16666));
     }
 }

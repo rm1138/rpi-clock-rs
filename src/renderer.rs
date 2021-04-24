@@ -1,5 +1,8 @@
 use crate::bitmap::Bitmap;
 use bitvec::prelude::*;
+use palette::float::Float;
+use palette::rgb::RgbSpace;
+use palette::{Hsv, LinSrgb, Srgb};
 
 const ROWS: usize = 8;
 const COLS: usize = 32;
@@ -8,16 +11,45 @@ const COLS: usize = 32;
 pub enum Color {
     White,
     Black,
-    Raw(u8, u8, u8),
+    Rainbow,
+    Hsv(f32, f32),
+    Raw(f32, f32, f32),
 }
 
 impl Color {
-    fn to_rgb(&self) -> (u8, u8, u8) {
+    fn is_black(&self) -> bool {
         match self {
-            Color::White => (12, 12, 12),
-            Color::Black => (0, 0, 0),
-            Color::Raw(r, g, b) => (*r, *g, *b),
+            Color::Black => true,
+            _ => false,
         }
+    }
+    fn to_rgb(&self, brightness: f32, step: usize, x: usize, y: usize) -> (u8, u8, u8) {
+        if brightness <= 0.04f32 && !self.is_black() {
+            return (1, 1, 1);
+        }
+        let rgb: LinSrgb<f32> = match self {
+            Color::White => LinSrgb::from_components((1f32, 1f32, 1f32)),
+            Color::Black => LinSrgb::from_components((0f32, 0f32, 0f32)),
+            Color::Rainbow => {
+                let hue = (x as f32 / 32f32) * 360f32 + step as f32;
+                let step_scaled = step as f32 / 100f32;
+                let mut row_step = (step_scaled + y as f32) % 16f32;
+                if row_step > 8f32 {
+                    row_step = 16f32 - row_step;
+                }
+                let sat = (row_step / 8f32) * 0.3f32 + 0.5f32; // [0.5 - 0.8]
+                LinSrgb::from(Hsv::new(hue, sat, brightness))
+            }
+            Color::Hsv(hue, sat) => LinSrgb::from(Hsv::new(*hue, *sat, brightness)),
+            Color::Raw(r, g, b) => LinSrgb::from_components((*r, *g, *b)),
+        };
+        let mut hsv: Hsv = rgb.into();
+        if let Color::Black = &self {
+        } else {
+            hsv.value = brightness;
+        }
+        let rgb: LinSrgb<f32> = hsv.into();
+        rgb.into_format().into_components()
     }
 }
 
@@ -25,9 +57,13 @@ struct Pixel {
     color: Color,
 }
 
+fn normalize_color(color: u8, brightness: f32) -> u8 {
+    ((color as f32) * brightness) as u8
+}
+
 impl Pixel {
-    fn to_bytes(&self) -> [u8; 3] {
-        let (r, g, b) = self.color.to_rgb();
+    fn to_bytes(&self, brightness: f32, step: usize, x: usize, y: usize) -> [u8; 3] {
+        let (r, g, b) = self.color.to_rgb(brightness, step, x, y);
         [g, r, b]
     }
 
@@ -46,12 +82,28 @@ impl Default for Pixel {
 
 pub struct Frame {
     pixels: [[Pixel; 8]; 32],
+    brightness: f32,
+    step: usize,
 }
 
 impl Frame {
     pub fn new() -> Frame {
         let pixels: [[Pixel; 8]; 32] = Default::default();
-        Frame { pixels }
+        Frame {
+            pixels,
+            brightness: 0.1f32,
+            step: 0,
+        }
+    }
+
+    pub fn set_brightness(&mut self, brightness: f32) {
+        if brightness > 0.1 {
+            self.brightness = 0.1
+        } else if brightness < 0.004 {
+            self.brightness = 0.004
+        } else {
+            self.brightness = brightness
+        }
     }
 
     pub fn clear(&mut self) {
@@ -85,10 +137,19 @@ impl Frame {
         let mut result = [0u8; 3 * ROWS * COLS];
         let mut idx = 0;
         for (col_idx, col) in self.pixels.iter().enumerate() {
+            let mut row_idx: usize = if col_idx % 2 == 1 { 7 } else { 0 };
             let apply = |pixel: &Pixel| {
-                for channel in pixel.to_bytes().iter() {
+                for channel in pixel
+                    .to_bytes(self.brightness, self.step, col_idx, row_idx)
+                    .iter()
+                {
                     result[idx] = *channel;
                     idx += 1;
+                }
+                if col_idx % 2 == 1 {
+                    row_idx -= 1;
+                } else {
+                    row_idx += 1;
                 }
             };
 
@@ -101,7 +162,7 @@ impl Frame {
         result
     }
 
-    pub fn get_spi_data(&self) -> Vec<u8> {
+    pub fn get_spi_data(&mut self) -> Vec<u8> {
         let mut result: Vec<u8> = Vec::new();
         let bytes = self.to_bytes();
         let bits = bytes.view_bits::<Msb0>();
@@ -116,9 +177,7 @@ impl Frame {
             }
         }
 
-        for _ in 1..1000 {
-            result.push(0b0000_0000);
-        }
+        self.step += 1;
         result
     }
 }
