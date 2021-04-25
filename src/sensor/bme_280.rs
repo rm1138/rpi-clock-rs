@@ -1,3 +1,4 @@
+use crate::mqtt::Mqtt;
 use crate::sensor::Sensor;
 use bme280::BME280;
 use linux_embedded_hal::{Delay, I2cdev};
@@ -15,6 +16,7 @@ pub struct BmeSensor {}
 
 impl Sensor<BmeReading> for BmeSensor {
     fn init(bus: String) -> Arc<RwLock<Option<BmeReading>>> {
+        let mut mqtt = Mqtt::connect().unwrap();
         let bus = I2cdev::new(bus).unwrap();
         let mut bme280 = BME280::new_primary(bus, Delay);
         let reading = Arc::new(RwLock::new(None));
@@ -29,6 +31,9 @@ impl Sensor<BmeReading> for BmeSensor {
                     pressure: measure.pressure,
                 });
             }
+            mqtt.publish("temperature", measure.temperature.to_string());
+            mqtt.publish("humidity", measure.humidity.to_string());
+            mqtt.publish("pressure", measure.pressure.to_string());
             std::thread::sleep(Duration::from_secs(60));
         });
 

@@ -2,6 +2,7 @@ use crate::sensor::Sensor;
 use apds9960::Apds9960;
 use linux_embedded_hal::I2cdev;
 use nb::block;
+use std::str::FromStr;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -12,7 +13,7 @@ pub enum Gesture {
 }
 #[derive(Debug)]
 pub struct ApdsReading {
-    light: u16,
+    light: f32,
     gesture: Option<Gesture>,
 }
 
@@ -24,10 +25,10 @@ impl ApdsReading {
 
 pub struct ApdsSensor {}
 
-fn init_and_calibrate(apds: &mut Apds9960<I2cdev>) {
+fn init_and_calibrate(apds: &mut Apds9960<I2cdev>, light_sensing_freq: u8) {
     apds.enable().unwrap();
     apds.enable_light().unwrap();
-    apds.set_light_integration_time(128).unwrap();
+    apds.set_light_integration_time(light_sensing_freq).unwrap();
 }
 
 impl Sensor<ApdsReading> for ApdsSensor {
@@ -36,18 +37,22 @@ impl Sensor<ApdsReading> for ApdsSensor {
         let mut apds = Apds9960::new(bus);
         let reading = Arc::new(RwLock::new(None));
         let reading_clone = reading.clone();
+        let light_sensing_freq: u8 = std::env::var("LIGHT_SENSING_FREQ")
+            .ok()
+            .and_then(|val| u8::from_str(&val).ok())
+            .unwrap_or(200);
 
-        init_and_calibrate(&mut apds);
+        init_and_calibrate(&mut apds, light_sensing_freq);
 
         std::thread::spawn(move || loop {
             let light = block!(apds.read_light()).unwrap();
             if let Ok(mut reading) = reading.write() {
                 *reading = Some(ApdsReading {
-                    light: light.clear,
+                    light: light.clear as f32 / 6553 as f32,
                     gesture: None,
                 })
             }
-            std::thread::sleep(Duration::from_secs(1))
+            std::thread::sleep(Duration::from_millis(500))
         });
 
         reading_clone

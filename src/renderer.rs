@@ -31,13 +31,14 @@ impl Color {
             Color::White => LinSrgb::from_components((1f32, 1f32, 1f32)),
             Color::Black => LinSrgb::from_components((0f32, 0f32, 0f32)),
             Color::Rainbow => {
-                let hue = (x as f32 / 32f32) * 360f32 + step as f32;
-                let step_scaled = step as f32 / 100f32;
-                let mut row_step = (step_scaled + y as f32) % 16f32;
+                let hue_grad = 64f32;
+                let step = step / 3;
+                let hue = (((x + step) as f32 % hue_grad) / hue_grad) * 360f32;
+                let mut row_step = (y) as f32 % 16f32;
                 if row_step > 8f32 {
                     row_step = 16f32 - row_step;
                 }
-                let sat = (row_step / 8f32) * 0.3f32 + 0.5f32; // [0.5 - 0.8]
+                let sat = (row_step / 8f32) * 0.4f32 + 0.6f32; // [0.5 - 0.9]
                 LinSrgb::from(Hsv::new(hue, sat, brightness))
             }
             Color::Hsv(hue, sat) => LinSrgb::from(Hsv::new(*hue, *sat, brightness)),
@@ -97,8 +98,8 @@ impl Frame {
     }
 
     pub fn set_brightness(&mut self, brightness: f32) {
-        if brightness > 0.1 {
-            self.brightness = 0.1
+        if brightness > 0.3 {
+            self.brightness = 0.3
         } else if brightness < 0.004 {
             self.brightness = 0.004
         } else {

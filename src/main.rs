@@ -1,3 +1,4 @@
+use crate::mqtt::Mqtt;
 use crate::renderer::{Color, Frame};
 use crate::sensor::bme_280::BmeReading;
 use crate::sensor::Sensor;
@@ -8,6 +9,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 mod bitmap;
+mod mqtt;
 mod renderer;
 mod sensor;
 
@@ -120,7 +122,7 @@ fn main() {
             }
             if let Ok(reading) = adps_reading.read() {
                 if let Some(reading) = reading.deref() {
-                    (*state).set_brightness(reading.get_light() / 50f32)
+                    (*state).set_brightness(reading.get_light())
                 }
             }
         }
@@ -147,6 +149,6 @@ fn main() {
             }
         }
         spi.write(&frame.get_spi_data()).unwrap();
-        std::thread::sleep(Duration::from_micros(16666));
+        std::thread::sleep(Duration::from_micros(1_000_000 / 30)); // 30 FPS
     }
 }
