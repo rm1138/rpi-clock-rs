@@ -1,0 +1,20 @@
+[Unit]
+Description=Rpi Clock
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=pi
+Environment="MQTT_HOST=192.168.1.101"
+Environment="MQTT_PORT=1883"
+Environment="MQTT_USERNAME=mqtt_username"
+Environment="MQTT_PASSWORD=mqtt_password"
+Environment="MQTT_TOPIC_PREFIX=sensor/bedroom"
+Environment="LIGHT_SENSING_FREQ=100"
+ExecStart=/home/pi/rpi-awtrix
+
+[Install]
+WantedBy=multi-user.target
