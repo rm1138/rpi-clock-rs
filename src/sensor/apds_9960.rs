@@ -48,7 +48,7 @@ impl Sensor<ApdsReading> for ApdsSensor {
             let light = block!(apds.read_light()).unwrap();
             if let Ok(mut reading) = reading.write() {
                 *reading = Some(ApdsReading {
-                    light: light.clear as f32 / 6553 as f32,
+                    light: light.clear as f32 / 3000 as f32,
                     gesture: None,
                 })
             }
