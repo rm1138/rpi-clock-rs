@@ -1,4 +1,3 @@
-use crate::mqtt::Mqtt;
 use crate::renderer::{Color, Frame};
 use crate::sensor::bme_280::BmeReading;
 use crate::sensor::Sensor;

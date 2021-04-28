@@ -1,6 +1,5 @@
 use paho_mqtt as mqtt;
 use std::env::VarError;
-use std::error::Error;
 use std::time::Duration;
 
 pub struct Mqtt {
@@ -56,7 +55,8 @@ impl Mqtt {
 
     pub fn publish(&mut self, topic: &str, message: String) {
         let topic = format!("{}/{}", self.topic_prefix, topic);
-        self.client
+        let _ = self
+            .client
             .publish(mqtt::Message::new_retained(topic, message, 0));
     }
 }

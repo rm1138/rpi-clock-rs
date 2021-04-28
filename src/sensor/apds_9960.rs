@@ -7,14 +7,8 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 #[derive(Debug)]
-pub enum Gesture {
-    Left,
-    Right,
-}
-#[derive(Debug)]
 pub struct ApdsReading {
     light: f32,
-    gesture: Option<Gesture>,
 }
 
 impl ApdsReading {
@@ -49,7 +43,6 @@ impl Sensor<ApdsReading> for ApdsSensor {
             if let Ok(mut reading) = reading.write() {
                 *reading = Some(ApdsReading {
                     light: light.clear as f32 / 3000 as f32,
-                    gesture: None,
                 })
             }
             std::thread::sleep(Duration::from_millis(500))

@@ -1,13 +1,12 @@
 use crate::bitmap::Bitmap;
 use bitvec::prelude::*;
-use palette::float::Float;
-use palette::rgb::RgbSpace;
-use palette::{Hsv, LinSrgb, Srgb};
+use palette::{Hsv, LinSrgb};
 
 const ROWS: usize = 8;
 const COLS: usize = 32;
 
 #[derive(Clone)]
+#[allow(unused)]
 pub enum Color {
     White,
     Black,
@@ -56,10 +55,6 @@ impl Color {
 
 struct Pixel {
     color: Color,
-}
-
-fn normalize_color(color: u8, brightness: f32) -> u8 {
-    ((color as f32) * brightness) as u8
 }
 
 impl Pixel {
