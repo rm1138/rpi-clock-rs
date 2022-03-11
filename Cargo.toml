@@ -21,3 +21,5 @@ palette = "0.5.0"
 
 [features]
 vendored-openssl = ["openssl/vendored"]
+
+

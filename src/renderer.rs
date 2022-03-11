@@ -11,6 +11,7 @@ pub enum Color {
     White,
     Black,
     Rainbow,
+    RGB,
     Hsv(f32, f32),
     Raw(f32, f32, f32),
 }
@@ -33,6 +34,17 @@ impl Color {
                 let hue_grad = 64f32;
                 let step = step / 3;
                 let hue = (((x + step) as f32 % hue_grad) / hue_grad) * 360f32;
+                let mut row_step = (y) as f32 % 16f32;
+                if row_step > 8f32 {
+                    row_step = 16f32 - row_step;
+                }
+                let sat = (row_step / 8f32) * 0.4f32 + 0.6f32; // [0.5 - 0.9]
+                LinSrgb::from(Hsv::new(hue, sat, brightness))
+            }
+            Color::RGB => {
+                let hue_grad = 64f32;
+                let step = step / 5;
+                let hue = (((step) as f32 % hue_grad) / hue_grad) * 360f32;
                 let mut row_step = (y) as f32 % 16f32;
                 if row_step > 8f32 {
                     row_step = 16f32 - row_step;
@@ -117,6 +129,12 @@ impl Frame {
                     self.pixels[col_idx + x][row_idx + y].set_color(color)
                 }
             }
+        }
+    }
+
+    pub fn draw_pixel(&mut self, color: &Color, x: usize, y: usize) {
+        if x < COLS && y < ROWS {
+            self.pixels[x][y].set_color(color)
         }
     }
 

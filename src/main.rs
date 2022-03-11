@@ -1,11 +1,11 @@
 use crate::renderer::{Color, Frame};
-use crate::sensor::bme_280::BmeReading;
 use crate::sensor::Sensor;
 use chrono::Local;
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
+use std::time::SystemTime;
 
 mod bitmap;
 mod mqtt;
@@ -15,8 +15,10 @@ mod sensor;
 struct RenderState {
     state: State,
     remain_tick: usize,
-    bme_reading: Option<BmeReading>,
+    temperature: Option<f32>,
+    humidity: Option<f32>,
     brightness: f32,
+    last_update: Option<SystemTime>,
 }
 
 enum State {
@@ -24,7 +26,6 @@ enum State {
     Date,
     Temperature,
     Humidity,
-    Pressure,
     Empty,
 }
 
@@ -33,8 +34,10 @@ impl RenderState {
         RenderState {
             state: State::Empty,
             remain_tick: 0,
-            bme_reading: None,
+            temperature: None,
+            humidity: None,
             brightness: 0.1f32,
+            last_update: None,
         }
     }
 
@@ -59,19 +62,37 @@ impl RenderState {
         }
 
         let (next_state, next_tick_remain) = match self.state {
-            State::Clock => (State::Date, 2),
-            State::Date => (State::Temperature, 1),
-            State::Temperature => (State::Humidity, 1),
-            State::Humidity => (State::Pressure, 1),
-            State::Pressure | State::Empty => (State::Clock, 8),
+            State::Clock => (State::Date, 1),
+            State::Date => {
+                if self.is_temperature_humidity_stale() {
+                    (State::Clock, 5)
+                } else {
+                    (State::Temperature, 1)
+                }
+            }
+            State::Temperature => {
+                if self.is_temperature_humidity_stale() {
+                    (State::Clock, 5)
+                } else {
+                    (State::Humidity, 1)
+                }
+            }
+            State::Humidity => (State::Clock, 15),
+            State::Empty => (State::Clock, 10),
         };
 
         self.state = next_state;
         self.remain_tick = next_tick_remain;
     }
 
-    fn set_bme_reading(&mut self, bme_reading: Option<BmeReading>) {
-        self.bme_reading = bme_reading;
+    fn set_temperature(&mut self, temperature: f32) {
+        self.temperature = Some(temperature);
+        self.last_update = Some(SystemTime::now());
+    }
+
+    fn set_humidity(&mut self, humidity: f32) {
+        self.humidity = Some(humidity);
+        self.last_update = Some(SystemTime::now());
     }
 
     fn set_brightness(&mut self, brightness: f32) {
@@ -87,21 +108,30 @@ impl RenderState {
             State::Clock => RenderState::format_time(),
             State::Date => RenderState::format_date(),
             State::Temperature => self
-                .bme_reading
+                .temperature
                 .as_ref()
-                .and_then(|bme| Some(format!("{:.2}c", bme.temperature)))
+                .and_then(|value| Some(format!("{:.2}c", value)))
                 .unwrap_or("".to_string()),
             State::Humidity => self
-                .bme_reading
+                .humidity
                 .as_ref()
-                .and_then(|bme| Some(format!("{:.2}%", bme.humidity)))
-                .unwrap_or("".to_string()),
-            State::Pressure => self
-                .bme_reading
-                .as_ref()
-                .and_then(|bme| Some(format!("{:.3}ATM", bme.pressure / 101325f32)))
+                .and_then(|value| Some(format!("{:.2}%", value)))
                 .unwrap_or("".to_string()),
             State::Empty => "".to_string(),
+        }
+    }
+
+    fn is_temperature_humidity_stale(&self) -> bool {
+        match self.last_update {
+            Some(last_update) => last_update.elapsed().unwrap().as_secs() > 300,
+            None => true,
+        }
+    }
+
+    fn is_temperature_humidity_just_updated(&self) -> bool {
+        match self.last_update {
+            Some(last_update) => last_update.elapsed().unwrap().as_secs() < 1,
+            None => false,
         }
     }
 }
@@ -109,16 +139,41 @@ impl RenderState {
 fn main() {
     println!("Started");
     let state = Arc::new(RwLock::new(RenderState::init()));
-    let bme_reading = sensor::bme_280::BmeSensor::init("/dev/i2c-1".to_string());
-    let adps_reading = sensor::apds_9960::ApdsSensor::init("/dev/i2c-1".to_string());
     let state_read = state.clone();
+    let adps_reading = sensor::apds_9960::ApdsSensor::init("/dev/i2c-1".to_string());
+
+    if let Ok(mut mqtt) = mqtt::Mqtt::connect() {
+        let state_mqtt = state.clone();
+        let mqtt_channel = mqtt.consume();
+        std::thread::spawn(move || {
+            // move the mqtt to new thread to prevent it to be dropped
+            mqtt.subscribe("temperature");
+            mqtt.subscribe("humidity");
+            mqtt_channel.iter().for_each(|msg| {
+                if let Some(msg) = msg {
+                    let topic = msg.topic();
+                    if let Ok(value) = msg.payload_str().parse() {
+                        if let Ok(mut state) = state_mqtt.write() {
+                            if topic.contains("temperature") {
+                                (*state).set_temperature(value);
+                            } else if topic.contains("humidity") {
+                                (*state).set_humidity(value);
+                            }
+                        }
+                    }
+                } else {
+                    println!("None message");
+                    mqtt.reconnect();
+                    mqtt.subscribe("temperature");
+                    mqtt.subscribe("humidity");
+                }
+            })
+        });
+    };
 
     std::thread::spawn(move || loop {
         if let Ok(mut state) = state.write() {
             (*state).next();
-            if let Ok(bme_reading) = bme_reading.read() {
-                (*state).set_bme_reading(*bme_reading);
-            }
             if let Ok(reading) = adps_reading.read() {
                 if let Some(reading) = reading.deref() {
                     (*state).set_brightness(reading.get_light())
@@ -137,17 +192,22 @@ fn main() {
         if let Ok(state) = state_read.read() {
             frame.set_brightness(state.brightness);
             match state.get_state() {
-                State::Clock => frame.draw_text(&state.get_render_text(), &Color::Rainbow, 2, 1),
-                State::Date => frame.draw_text(&state.get_render_text(), &Color::Rainbow, 1, 1),
-                State::Temperature => {
-                    frame.draw_text(&state.get_render_text(), &Color::Rainbow, 6, 1)
-                }
-                State::Humidity => frame.draw_text(&state.get_render_text(), &Color::Rainbow, 6, 1),
-                State::Pressure => frame.draw_text(&state.get_render_text(), &Color::Rainbow, 1, 1),
+                State::Clock => frame.draw_text(&state.get_render_text(), &Color::RGB, 2, 1),
+                State::Date => frame.draw_text(&state.get_render_text(), &Color::RGB, 1, 1),
+                State::Temperature => frame.draw_text(&state.get_render_text(), &Color::RGB, 6, 1),
+                State::Humidity => frame.draw_text(&state.get_render_text(), &Color::RGB, 6, 1),
                 _ => {}
+            }
+
+            if state.is_temperature_humidity_stale() {
+                frame.draw_pixel(&Color::Raw(64f32, 0f32, 0f32), 1, 7);
+            }
+
+            if state.is_temperature_humidity_just_updated() {
+                frame.draw_pixel(&Color::RGB, 30, 7);
             }
         }
         spi.write(&frame.get_spi_data()).unwrap();
-        std::thread::sleep(Duration::from_micros(1_000_000 / 30)); // 30 FPS
+        std::thread::sleep(Duration::from_micros(1_000_000 / 60));
     }
 }
