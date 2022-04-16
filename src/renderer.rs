@@ -1,9 +1,14 @@
+use std::io::Stderr;
+use std::str::FromStr;
+
 use crate::bitmap::Bitmap;
 use bitvec::prelude::*;
 use palette::{Hsv, LinSrgb};
 
 const ROWS: usize = 8;
 const COLS: usize = 32;
+
+pub struct ParseColorErr;
 
 #[derive(Clone)]
 #[allow(unused)]
@@ -14,6 +19,34 @@ pub enum Color {
     RGB,
     Hsv(f32, f32),
     Raw(f32, f32, f32),
+}
+
+impl FromStr for Color {
+    type Err = ParseColorErr;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut arr = s.split(',').into_iter();
+        let red: f32 = arr
+            .next()
+            .ok_or(ParseColorErr)?
+            .parse::<f32>()
+            .map_err(|_| ParseColorErr)?
+            / 255f32;
+        let green: f32 = arr
+            .next()
+            .ok_or(ParseColorErr)?
+            .parse::<f32>()
+            .map_err(|_| ParseColorErr)?
+            / 255f32;
+        let blue: f32 = arr
+            .next()
+            .ok_or(ParseColorErr)?
+            .parse::<f32>()
+            .map_err(|_| ParseColorErr)?
+            / 255f32;
+
+        Ok(Color::Raw(red, green, blue))
+    }
 }
 
 impl Color {

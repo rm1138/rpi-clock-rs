@@ -19,6 +19,7 @@ struct RenderState {
     humidity: Option<f32>,
     brightness: f32,
     last_update: Option<SystemTime>,
+    color: Color,
 }
 
 enum State {
@@ -38,6 +39,7 @@ impl RenderState {
             humidity: None,
             brightness: 0.1f32,
             last_update: None,
+            color: Color::White,
         }
     }
 
@@ -85,14 +87,24 @@ impl RenderState {
         self.remain_tick = next_tick_remain;
     }
 
-    fn set_temperature(&mut self, temperature: f32) {
-        self.temperature = Some(temperature);
-        self.last_update = Some(SystemTime::now());
+    fn set_temperature(&mut self, value: &str) {
+        if let Ok(value) = value.parse() {
+            self.temperature = Some(value);
+            self.last_update = Some(SystemTime::now());
+        }
     }
 
-    fn set_humidity(&mut self, humidity: f32) {
-        self.humidity = Some(humidity);
-        self.last_update = Some(SystemTime::now());
+    fn set_humidity(&mut self, value: &str) {
+        if let Ok(value) = value.parse() {
+            self.humidity = Some(value);
+            self.last_update = Some(SystemTime::now());
+        }
+    }
+
+    fn set_color(&mut self, value: &str) {
+        if let Ok(value) = value.parse() {
+            self.color = value
+        }
     }
 
     fn set_brightness(&mut self, brightness: f32) {
@@ -149,16 +161,18 @@ fn main() {
             // move the mqtt to new thread to prevent it to be dropped
             mqtt.subscribe("temperature");
             mqtt.subscribe("humidity");
+            mqtt.subscribe("color");
+
             mqtt_channel.iter().for_each(|msg| {
                 if let Some(msg) = msg {
                     let topic = msg.topic();
-                    if let Ok(value) = msg.payload_str().parse() {
-                        if let Ok(mut state) = state_mqtt.write() {
-                            if topic.contains("temperature") {
-                                (*state).set_temperature(value);
-                            } else if topic.contains("humidity") {
-                                (*state).set_humidity(value);
-                            }
+                    if let Ok(mut state) = state_mqtt.write() {
+                        if topic.contains("temperature") {
+                            (*state).set_temperature(&msg.payload_str());
+                        } else if topic.contains("humidity") {
+                            (*state).set_humidity(&msg.payload_str());
+                        } else if topic.contains("color") {
+                            (*state).set_color(&msg.payload_str());
                         }
                     }
                 } else {
@@ -192,10 +206,10 @@ fn main() {
         if let Ok(state) = state_read.read() {
             frame.set_brightness(state.brightness);
             match state.get_state() {
-                State::Clock => frame.draw_text(&state.get_render_text(), &Color::RGB, 2, 1),
-                State::Date => frame.draw_text(&state.get_render_text(), &Color::RGB, 1, 1),
-                State::Temperature => frame.draw_text(&state.get_render_text(), &Color::RGB, 6, 1),
-                State::Humidity => frame.draw_text(&state.get_render_text(), &Color::RGB, 6, 1),
+                State::Clock => frame.draw_text(&state.get_render_text(), &state.color, 2, 1),
+                State::Date => frame.draw_text(&state.get_render_text(), &state.color, 1, 1),
+                State::Temperature => frame.draw_text(&state.get_render_text(), &state.color, 6, 1),
+                State::Humidity => frame.draw_text(&state.get_render_text(), &state.color, 6, 1),
                 _ => {}
             }
 
