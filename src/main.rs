@@ -39,7 +39,7 @@ impl RenderState {
             humidity: None,
             brightness: 0.1f32,
             last_update: None,
-            color: Color::White,
+            color: Color::RGB,
         }
     }
 
@@ -103,7 +103,8 @@ impl RenderState {
 
     fn set_color(&mut self, value: &str) {
         if let Ok(value) = value.parse() {
-            self.color = value
+            self.color = value;
+            self.last_update = Some(SystemTime::now());
         }
     }
 
@@ -156,9 +157,9 @@ fn main() {
 
     if let Ok(mut mqtt) = mqtt::Mqtt::connect() {
         let state_mqtt = state.clone();
-        let mqtt_channel = mqtt.consume();
+        // move the mqtt to new thread to prevent it to be dropped
         std::thread::spawn(move || {
-            // move the mqtt to new thread to prevent it to be dropped
+            let mqtt_channel = mqtt.consume();
             mqtt.subscribe("temperature");
             mqtt.subscribe("humidity");
             mqtt.subscribe("color");

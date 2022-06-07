@@ -1,5 +1,4 @@
-use std::io::Stderr;
-use std::str::FromStr;
+use std::{ops::Div, str::FromStr};
 
 use crate::bitmap::Bitmap;
 use bitvec::prelude::*;
@@ -25,27 +24,24 @@ impl FromStr for Color {
     type Err = ParseColorErr;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut arr = s.split(',').into_iter();
-        let red: f32 = arr
-            .next()
-            .ok_or(ParseColorErr)?
-            .parse::<f32>()
-            .map_err(|_| ParseColorErr)?
-            / 255f32;
-        let green: f32 = arr
-            .next()
-            .ok_or(ParseColorErr)?
-            .parse::<f32>()
-            .map_err(|_| ParseColorErr)?
-            / 255f32;
-        let blue: f32 = arr
-            .next()
-            .ok_or(ParseColorErr)?
-            .parse::<f32>()
-            .map_err(|_| ParseColorErr)?
-            / 255f32;
+        match s {
+            "rgb" => Ok(Color::RGB),
+            "rainbow" => Ok(Color::Rainbow),
+            "black" => Ok(Color::Black),
+            _ => {
+                let mut arr = s
+                    .split(',')
+                    .into_iter()
+                    .flat_map(|it| it.parse::<f32>())
+                    .map(|it| it / 255f32);
 
-        Ok(Color::Raw(red, green, blue))
+                let red: f32 = arr.next().ok_or(ParseColorErr)?;
+                let green: f32 = arr.next().ok_or(ParseColorErr)?;
+                let blue: f32 = arr.next().ok_or(ParseColorErr)?;
+
+                Ok(Color::Raw(red, green, blue))
+            }
+        }
     }
 }
 
